@@ -1,7 +1,6 @@
 import os
-import json
+import requests
 from fastmcp import FastMCP
-from googleapiclient.discovery import build
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -10,17 +9,16 @@ load_dotenv()
 # Crear la instancia del servidor
 mcp = FastMCP("xiaozhi-mcp-server")
 
-# Obtener claves de Google desde variables de entorno
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID") # ⬅️ Este es el ID del motor de búsqueda (cx)
+# Obtener la clave de Serper.dev desde variables de entorno
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
 # ============================================
-# HERRAMIENTA 1: Búsqueda en Google (CORREGIDA)
+# HERRAMIENTA 1: Búsqueda en internet (Serper.dev)
 # ============================================
 @mcp.tool()
-def google_search(query: str, num_results: int = 5) -> str:
+def web_search(query: str, num_results: int = 5) -> str:
     """
-    Busca información en Google y devuelve los resultados.
+    Busca información en Google usando Serper.dev y devuelve los resultados.
 
     Args:
         query: La consulta de búsqueda (ej. "resultados fútbol 2026")
@@ -29,32 +27,49 @@ def google_search(query: str, num_results: int = 5) -> str:
     Returns:
         Lista de resultados con título, descripción y enlace
     """
-    if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-        return "Error: Las claves de Google no están configuradas"
+    if not SERPER_API_KEY:
+        return "Error: SERPER_API_KEY no está configurada en las variables de entorno"
+
+    # Limitar el número de resultados a 10 (máximo permitido por Serper)
+    num_results = min(num_results, 10)
+
+    url = "https://google.serper.dev/search"
+    headers = {
+        "X-API-KEY": SERPER_API_KEY,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "q": query,
+        "num": num_results
+    }
 
     try:
-        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
-        result = service.cse().list(
-            q=query,
-            cx=GOOGLE_CSE_ID,
-            num=min(num_results, 10)
-        ).execute()
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  # Lanza excepción si hay error HTTP
+        data = response.json()
 
-        if 'items' not in result:
+        # Extraer los resultados orgánicos
+        organic_results = data.get("organic", [])
+        if not organic_results:
             return f"No se encontraron resultados para: {query}"
 
         output = f"🔍 Resultados para: {query}\n\n"
-        for i, item in enumerate(result['items'], 1):
-            output += f"{i}. **{item.get('title', 'Sin título')}**\n"
-            output += f" {item.get('snippet', 'Sin descripción')}\n"
-            output += f" 🔗 {item.get('link', '')}\n\n"
+        for i, item in enumerate(organic_results[:num_results], 1):
+            title = item.get("title", "Sin título")
+            snippet = item.get("snippet", "Sin descripción")
+            link = item.get("link", "")
+            output += f"{i}. **{title}**\n"
+            output += f"   {snippet}\n"
+            output += f"   🔗 {link}\n\n"
         return output
 
+    except requests.exceptions.RequestException as e:
+        return f"Error al realizar la búsqueda (problema de red): {str(e)}"
     except Exception as e:
         return f"Error al realizar la búsqueda: {str(e)}"
 
 # ============================================
-# HERRAMIENTA 2: Hora actual (OPCIONAL, pero útil)
+# HERRAMIENTA 2: Hora actual
 # ============================================
 @mcp.tool()
 def get_current_time() -> str:
@@ -69,5 +84,5 @@ def get_current_time() -> str:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"🚀 Iniciando servidor MCP en el puerto {port}")
-    print("📦 Herramientas disponibles: google_search, get_current_time")
+    print("📦 Herramientas disponibles: web_search, get_current_time")
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
