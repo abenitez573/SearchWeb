@@ -2,62 +2,70 @@ import os
 import json
 import asyncio
 import websockets
-from server import mcp # Importa tu servidor MCP
+from server import mcp
 
-MCP_ENDPOINT = os.getenv("MCP_ENDPOINT") # Esta variable la pondremos en Render
+MCP_ENDPOINT = os.getenv("MCP_ENDPOINT")
 
 async def main():
     if not MCP_ENDPOINT:
-        print("Error: MCP_ENDPOINT no configurado en variables de entorno")
+        print("❌ Error: MCP_ENDPOINT no configurado en variables de entorno")
         return
 
-    print(f"Conectando a {MCP_ENDPOINT}...")
-    
+    print(f"🔄 Conectando a {MCP_ENDPOINT}...")
+
     try:
-        async with websockets.connect(MCP_ENDPOINT) as websocket:
-            print("✅ Conectado al MCP Access Point de Xiaozhi")
-            
-            # Envía un mensaje de identificación
-            await websocket.send(json.dumps({
+        async with websockets.connect(
+            MCP_ENDPOINT,
+            extra_headers={"User-Agent": "xiaozhi-mcp-gateway/1.0"}
+        ) as websocket:
+            print("✅ WebSocket conectado. Esperando mensajes...")
+
+            # Enviar mensaje de "connect" con el formato esperado
+            connect_msg = {
                 "type": "connect",
-                "name": "xiaozhi-mcp-server",
+                "name": "xiaozhi-mcp-gateway",
                 "capabilities": {
                     "tools": [
-                        "google_search",
-                        "get_current_time"
+                        {"name": "google_search", "description": "Busca en Google"},
+                        {"name": "get_current_time", "description": "Obtiene la hora actual"}
                     ]
                 }
-            }))
-            
-            # Escucha y procesa mensajes
+            }
+            await websocket.send(json.dumps(connect_msg))
+            print("📤 Mensaje de conexión enviado.")
+
+            # Escuchar mensajes
             async for message in websocket:
                 try:
                     data = json.loads(message)
                     print(f"📥 Recibido: {data}")
-                    
+
                     if data.get("type") == "tool_call":
-                        tool_name = data.get("tool")
+                        tool_name = data.get("name")
                         args = data.get("arguments", {})
-                        
-                        # Ejecuta la herramienta correspondiente
+                        print(f"🔧 Llamando a herramienta: {tool_name} con args: {args}")
+
                         if tool_name == "google_search":
                             result = await mcp.tools["google_search"](**args)
                         elif tool_name == "get_current_time":
                             result = await mcp.tools["get_current_time"](**args)
                         else:
-                            result = f"Herramienta {tool_name} no encontrada"
-                        
-                        # Envía la respuesta
+                            result = f"Herramienta desconocida: {tool_name}"
+
                         await websocket.send(json.dumps({
                             "type": "tool_result",
                             "result": result
                         }))
-                        
+                        print("📤 Resultado enviado.")
                 except Exception as e:
-                    print(f"❌ Error procesando mensaje: {e}")
-                    
+                    print(f"❌ Error al procesar mensaje: {e}")
+
+    except websockets.exceptions.InvalidStatusCode as e:
+        print(f"❌ Error de conexión (código HTTP {e.status_code}): {e}")
+    except websockets.exceptions.InvalidHandshake as e:
+        print(f"❌ Error de handshake: {e}")
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
+        print(f"❌ Error inesperado: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
