@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "xiaozhi-mcp-server": {
+      "command": "python",
+      "args": ["server.py"],
+      "env": {
+        "SERPER_API_KEY": "${SERPER_API_KEY}"
+      }
+    }
+  }
+}
