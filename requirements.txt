@@ -1,4 +1,4 @@
 fastmcp
 google-api-python-client
 python-dotenv
-websockets
+websockets>=12.0
