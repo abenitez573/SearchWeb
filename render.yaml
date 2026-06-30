@@ -1,0 +1,13 @@
+services:
+  - type:web
+    name: xiaozhi-mcp-server
+    runtime: python
+    repo: https://github.com/abenitez573/SearchWeb
+    plan:free
+    envVars:
+     - key:GOOGLE_API_KEY
+     sync:false
+     - key:GOOGLE_CSE_ID
+     sync:false
+     buildCommand: pip install -r requeriments.txt
+     startCommand: python server.py
