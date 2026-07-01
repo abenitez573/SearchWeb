@@ -75,5 +75,5 @@ def web_search(query: str, num_results: int = 5) -> str:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"🚀 Iniciando servidor MCP en el puerto {port}")
-    print("📦 Herramientas disponibles: web_search, get_current_time")
+    print("📦 Herramientas disponibles: web_search")
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
