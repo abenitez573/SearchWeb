@@ -29,11 +29,8 @@ def run_health_server():
     server.serve_forever()
 
 # ============================================
-# Cliente MCP para Xiaozhi
+# Cliente MCP para Xiaozhi (con reconexión)
 # ============================================
-
-print(f"🔍 MCP_ENDPOINT = {MCP_ENDPOINT}")
-
 async def connect_to_xiaozhi():
     if not MCP_ENDPOINT:
         print("❌ Error: MCP_ENDPOINT no configurado")
@@ -171,15 +168,17 @@ async def connect_to_xiaozhi():
             await asyncio.sleep(5)
 
 # ============================================
-# Punto de entrada
+# Punto de entrada (NUEVO ORDEN)
 # ============================================
 if __name__ == "__main__":
-    # Iniciar health check
-    http_thread = threading.Thread(target=run_health_server, daemon=True)
-    http_thread.start()
-
-    # Ejecutar cliente WebSocket con reconexión
-    try:
+    # 1️⃣ Primero: Iniciar el WebSocket en un hilo separado
+    def run_websocket():
         asyncio.run(connect_to_xiaozhi())
-    except KeyboardInterrupt:
-        print("🛑 Servidor detenido")
+    
+    ws_thread = threading.Thread(target=run_websocket, daemon=True)
+    ws_thread.start()
+    print("🌐 Cliente WebSocket iniciado")
+    
+    # 2️⃣ Luego: Iniciar el servidor HTTP (bloquea el hilo principal)
+    print("🩺 Iniciando health check...")
+    run_health_server()
