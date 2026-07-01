@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import threading
 import websockets
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -33,13 +34,46 @@ async def connect_to_xiaozhi():
     try:
         async with websockets.connect(MCP_ENDPOINT) as websocket:
             print("✅ Conectado a Xiaozhi")
+            
             async for message in websocket:
-                # Aquí va la lógica para manejar los mensajes
-                print(f"📥 {message}")
-                # Si es un ping, respondemos con pong
-                if '"method":"ping"' in message:
-                    await websocket.send('{"jsonrpc":"2.0","id":1,"result":{}}')
-                    print("📤 Pong")
+                try:
+                    data = json.loads(message)
+                    print(f"📥 {message}")
+                    
+                    # ============================================
+                    # Manejar "initialize" (OBLIGATORIO)
+                    # ============================================
+                    if data.get("method") == "initialize":
+                        response = {
+                            "jsonrpc": "2.0",
+                            "id": data.get("id"),
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {"tools": {}},
+                                "serverInfo": {"name": "gateway", "version": "1.0"}
+                            }
+                        }
+                        await websocket.send(json.dumps(response))
+                        print("📤 Inicialización respondida")
+                        continue
+                    
+                    # ============================================
+                    # Manejar "ping"
+                    # ============================================
+                    if data.get("method") == "ping":
+                        await websocket.send(json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": data.get("id"),
+                            "result": {}
+                        }))
+                        print("📤 Pong")
+                        continue
+                        
+                except json.JSONDecodeError:
+                    print(f"⚠️ Mensaje no JSON: {message}")
+                except Exception as e:
+                    print(f"❌ Error procesando mensaje: {e}")
+                    
     except Exception as e:
         print(f"❌ Error en WebSocket: {e}")
 
@@ -48,9 +82,8 @@ async def connect_to_xiaozhi():
 # ============================================
 if __name__ == "__main__":
     # Iniciar servidor HTTP en un hilo separado
-    import threading
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     
-    # Conectar a Xiaozhi
+    # Conectar a Xiaozhi (bloquea el hilo principal)
     asyncio.run(connect_to_xiaozhi())
