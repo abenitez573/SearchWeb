@@ -78,11 +78,6 @@ async def connect_to_xiaozhi():
                                             },
                                             "required": ["query"]
                                         }
-                                    },
-                                    {
-                                        "name": "get_current_time",
-                                        "description": "Devuelve la hora y fecha actual",
-                                        "inputSchema": {"type": "object", "properties": {}}
                                     }
                                 ]
                             }
@@ -102,8 +97,6 @@ async def connect_to_xiaozhi():
                         
                         if tool_name == "web_search":
                             result = mcp.tools["web_search"](**args)
-                        elif tool_name == "get_current_time":
-                            result = mcp.tools["get_current_time"]()
                         else:
                             result = f"Herramienta desconocida: {tool_name}"
                         
