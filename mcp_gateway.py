@@ -3,7 +3,6 @@ import json
 import asyncio
 import threading
 import websockets
-import signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from server import mcp
 
@@ -30,7 +29,7 @@ def run_health_server():
     server.serve_forever()
 
 # ============================================
-# Cliente MCP para Xiaozhi (con reconexión)
+# Cliente MCP para Xiaozhi
 # ============================================
 async def connect_to_xiaozhi():
     if not MCP_ENDPOINT:
@@ -47,28 +46,15 @@ async def connect_to_xiaozhi():
             ) as websocket:
                 print("✅ WebSocket conectado")
 
-                # Enviar mensaje de conexión
-                await websocket.send(json.dumps({
-                    "type": "connect",
-                    "name": "xiaozhi-mcp-gateway",
-                    "capabilities": {
-                        "google_search": {
-                            "description": "Busca en Google"
-                        },
-                        "get_current_time": {
-                            "description": "Obtiene la hora actual"
-                        }
-                    }
-                }))
-                print("📤 Conexión solicitada")
-
-                # Bucle principal
+                # Bucle principal de mensajes
                 async for message in websocket:
                     try:
                         data = json.loads(message)
-                        print(f"📥 Mensaje: {data}")
+                        print(f"📥 Recibido: {data}")
 
-                        # Manejar "initialize" (lo que pide Xiaozhi)
+                        # ============================================
+                        # 1. MANEJO DE "initialize"
+                        # ============================================
                         if data.get("method") == "initialize":
                             await websocket.send(json.dumps({
                                 "jsonrpc": "2.0",
@@ -86,14 +72,59 @@ async def connect_to_xiaozhi():
                             }))
                             print("📤 Inicialización respondida")
 
-                        # Manejar "tools/call"
+                        # ============================================
+                        # 2. MANEJO DE "tools/list"
+                        # ============================================
+                        elif data.get("method") == "tools/list":
+                            await websocket.send(json.dumps({
+                                "jsonrpc": "2.0",
+                                "id": data.get("id"),
+                                "result": {
+                                    "tools": [
+                                        {
+                                            "name": "web_search",
+                                            "description": "Busca información en internet",
+                                            "inputSchema": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "query": {
+                                                        "type": "string",
+                                                        "description": "La consulta de búsqueda"
+                                                    },
+                                                    "num_results": {
+                                                        "type": "integer",
+                                                        "description": "Número de resultados",
+                                                        "default": 5
+                                                    }
+                                                },
+                                                "required": ["query"]
+                                            }
+                                        },
+                                        {
+                                            "name": "get_current_time",
+                                            "description": "Obtiene la hora y fecha actual",
+                                            "inputSchema": {
+                                                "type": "object",
+                                                "properties": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            }))
+                            print("📤 Lista de herramientas enviada")
+
+                        # ============================================
+                        # 3. MANEJO DE "tools/call"
+                        # ============================================
                         elif data.get("method") == "tools/call":
                             params = data.get("params", {})
                             tool_name = params.get("name")
                             args = params.get("arguments", {})
 
-                            if tool_name == "google_search":
-                                result = await mcp.tools["google_search"](**args)
+                            print(f"🔧 Llamando a: {tool_name} con args: {args}")
+
+                            if tool_name == "web_search":
+                                result = await mcp.tools["web_search"](**args)
                             elif tool_name == "get_current_time":
                                 result = await mcp.tools["get_current_time"](**args)
                             else:
@@ -105,11 +136,28 @@ async def connect_to_xiaozhi():
                                 "result": {
                                     "content": [{
                                         "type": "text",
-                                        "text": result
+                                        "text": str(result)
                                     }]
                                 }
                             }))
                             print("📤 Resultado enviado")
+
+                        # ============================================
+                        # 4. MANEJO DE "ping"
+                        # ============================================
+                        elif data.get("method") == "ping":
+                            await websocket.send(json.dumps({
+                                "jsonrpc": "2.0",
+                                "id": data.get("id"),
+                                "result": {}
+                            }))
+                            print("📤 Pong respondido")
+
+                        # ============================================
+                        # 5. MANEJO DE NOTIFICACIONES
+                        # ============================================
+                        elif data.get("method") == "notifications/initialized":
+                            print("✅ Inicialización confirmada por el servidor")
 
                     except Exception as e:
                         print(f"❌ Error en mensaje: {e}")
