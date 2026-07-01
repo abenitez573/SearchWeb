@@ -14,10 +14,29 @@ async def main():
         async with websockets.connect(MCP_ENDPOINT) as websocket:
             print("✅ Conectado a Xiaozhi")
             
-            # 1. Enviar "initialize" (JSON-RPC 2.0)
+            # Esperar el mensaje de inicialización del servidor
+            msg = await websocket.recv()
+            data = json.loads(msg)
+            print(f"📥 Recibido del servidor: {data}")
+            
+            # Responder al "initialize" del servidor
+            if data.get("method") == "initialize":
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "gateway", "version": "1.0"}
+                    }
+                }
+                await websocket.send(json.dumps(response))
+                print("📤 Inicialización respondida")
+            
+            # Ahora enviar nuestra propia inicialización
             init_msg = {
                 "jsonrpc": "2.0",
-                "id": 0,
+                "id": 1,
                 "method": "initialize",
                 "params": {
                     "protocolVersion": "2024-11-05",
@@ -28,11 +47,11 @@ async def main():
             await websocket.send(json.dumps(init_msg))
             print("📤 Inicialización enviada")
             
-            # 2. Esperar respuesta de "initialize"
-            response = await websocket.recv()
-            print(f"📥 Respuesta: {response}")
+            # Esperar respuesta de nuestro initialize
+            resp = await websocket.recv()
+            print(f"📥 Respuesta a initialize: {resp}")
             
-            # 3. Enviar notificación de inicialización completada
+            # Enviar notificación de inicialización completada
             init_done = {
                 "jsonrpc": "2.0",
                 "method": "notifications/initialized"
@@ -40,21 +59,54 @@ async def main():
             await websocket.send(json.dumps(init_done))
             print("📤 Inicialización completada")
             
-            # 4. Enviar "tools/list" para anunciar las herramientas
-            tools_msg = {
+            # Esperar la solicitud de lista de herramientas
+            tools_req = await websocket.recv()
+            print(f"📥 Solicitud de herramientas: {tools_req}")
+            
+            # Responder con la lista de herramientas
+            tools_response = {
                 "jsonrpc": "2.0",
                 "id": 1,
-                "method": "tools/list",
-                "params": {}
+                "result": {
+                    "tools": [
+                        {
+                            "name": "web_search",
+                            "description": "Busca en internet",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {"type": "string"},
+                                    "num_results": {"type": "integer", "default": 5}
+                                },
+                                "required": ["query"]
+                            }
+                        },
+                        {
+                            "name": "get_current_time",
+                            "description": "Obtiene la hora actual",
+                            "inputSchema": {"type": "object", "properties": {}}
+                        }
+                    ]
+                }
             }
-            await websocket.send(json.dumps(tools_msg))
-            print("📤 Lista de herramientas solicitada")
+            await websocket.send(json.dumps(tools_response))
+            print("📤 Lista de herramientas enviada")
             
-            # 5. Bucle principal: recibir y procesar mensajes
+            # Bucle principal: recibir y procesar mensajes
             async for message in websocket:
                 data = json.loads(message)
                 print(f"📥 Recibido: {data}")
-                # Aquí iría el manejo de "tools/call" para ejecutar las herramientas
+                
+                if data.get("method") == "tools/call":
+                    # Aquí iría la lógica para ejecutar las herramientas
+                    pass
+                elif data.get("method") == "ping":
+                    await websocket.send(json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": data.get("id"),
+                        "result": {}
+                    }))
+                    print("📤 Pong")
                 
     except Exception as e:
         print(f"❌ Error: {e}")
