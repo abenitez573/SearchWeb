@@ -4,6 +4,7 @@ import asyncio
 import threading
 import websockets
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from server import mcp
 
 MCP_ENDPOINT = os.getenv("MCP_ENDPOINT")
 PORT = int(os.environ.get("PORT", 10000))
@@ -41,7 +42,7 @@ async def connect_to_xiaozhi():
                     print(f"📥 {message}")
                     
                     # ============================================
-                    # Manejar "initialize" (OBLIGATORIO)
+                    # 1. Manejar "initialize"
                     # ============================================
                     if data.get("method") == "initialize":
                         response = {
@@ -58,7 +59,66 @@ async def connect_to_xiaozhi():
                         continue
                     
                     # ============================================
-                    # Manejar "ping"
+                    # 2. Manejar "tools/list"
+                    # ============================================
+                    if data.get("method") == "tools/list":
+                        response = {
+                            "jsonrpc": "2.0",
+                            "id": data.get("id"),
+                            "result": {
+                                "tools": [
+                                    {
+                                        "name": "web_search",
+                                        "description": "Busca información en internet",
+                                        "inputSchema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "query": {"type": "string", "description": "Consulta de búsqueda"},
+                                                "num_results": {"type": "integer", "description": "Número de resultados", "default": 5}
+                                            },
+                                            "required": ["query"]
+                                        }
+                                    },
+                                    {
+                                        "name": "get_current_time",
+                                        "description": "Devuelve la hora y fecha actual",
+                                        "inputSchema": {"type": "object", "properties": {}}
+                                    }
+                                ]
+                            }
+                        }
+                        await websocket.send(json.dumps(response))
+                        print("📤 Lista de herramientas enviada")
+                        continue
+                    
+                    # ============================================
+                    # 3. Manejar "tools/call"
+                    # ============================================
+                    if data.get("method") == "tools/call":
+                        params = data.get("params", {})
+                        tool_name = params.get("name")
+                        args = params.get("arguments", {})
+                        print(f"🔧 Llamando a: {tool_name} con args: {args}")
+                        
+                        if tool_name == "web_search":
+                            result = mcp.tools["web_search"](**args)
+                        elif tool_name == "get_current_time":
+                            result = mcp.tools["get_current_time"]()
+                        else:
+                            result = f"Herramienta desconocida: {tool_name}"
+                        
+                        await websocket.send(json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": data.get("id"),
+                            "result": {
+                                "content": [{"type": "text", "text": str(result)}]
+                            }
+                        }))
+                        print("📤 Resultado enviado")
+                        continue
+                    
+                    # ============================================
+                    # 4. Manejar "ping"
                     # ============================================
                     if data.get("method") == "ping":
                         await websocket.send(json.dumps({
@@ -68,7 +128,7 @@ async def connect_to_xiaozhi():
                         }))
                         print("📤 Pong")
                         continue
-                        
+                    
                 except json.JSONDecodeError:
                     print(f"⚠️ Mensaje no JSON: {message}")
                 except Exception as e:
