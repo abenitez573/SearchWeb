@@ -2,10 +2,30 @@ import os
 import json
 import asyncio
 import websockets
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 MCP_ENDPOINT = os.getenv("MCP_ENDPOINT")
+PORT = int(os.environ.get("PORT", 10000))
 
-async def main():
+# ============================================
+# Servidor HTTP para health check (Render)
+# ============================================
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_health_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print(f"🩺 Health check en puerto {PORT}")
+    server.serve_forever()
+
+# ============================================
+# Cliente WebSocket (conexión a Xiaozhi)
+# ============================================
+async def connect_to_xiaozhi():
     if not MCP_ENDPOINT:
         print("❌ MCP_ENDPOINT no configurado")
         return
@@ -13,103 +33,24 @@ async def main():
     try:
         async with websockets.connect(MCP_ENDPOINT) as websocket:
             print("✅ Conectado a Xiaozhi")
-            
-            # Esperar el mensaje de inicialización del servidor
-            msg = await websocket.recv()
-            data = json.loads(msg)
-            print(f"📥 Recibido del servidor: {data}")
-            
-            # Responder al "initialize" del servidor
-            if data.get("method") == "initialize":
-                response = {
-                    "jsonrpc": "2.0",
-                    "id": data.get("id"),
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "gateway", "version": "1.0"}
-                    }
-                }
-                await websocket.send(json.dumps(response))
-                print("📤 Inicialización respondida")
-            
-            # Ahora enviar nuestra propia inicialización
-            init_msg = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "clientInfo": {"name": "gateway", "version": "1.0"}
-                }
-            }
-            await websocket.send(json.dumps(init_msg))
-            print("📤 Inicialización enviada")
-            
-            # Esperar respuesta de nuestro initialize
-            resp = await websocket.recv()
-            print(f"📥 Respuesta a initialize: {resp}")
-            
-            # Enviar notificación de inicialización completada
-            init_done = {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized"
-            }
-            await websocket.send(json.dumps(init_done))
-            print("📤 Inicialización completada")
-            
-            # Esperar la solicitud de lista de herramientas
-            tools_req = await websocket.recv()
-            print(f"📥 Solicitud de herramientas: {tools_req}")
-            
-            # Responder con la lista de herramientas
-            tools_response = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {
-                    "tools": [
-                        {
-                            "name": "web_search",
-                            "description": "Busca en internet",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {"type": "string"},
-                                    "num_results": {"type": "integer", "default": 5}
-                                },
-                                "required": ["query"]
-                            }
-                        },
-                        {
-                            "name": "get_current_time",
-                            "description": "Obtiene la hora actual",
-                            "inputSchema": {"type": "object", "properties": {}}
-                        }
-                    ]
-                }
-            }
-            await websocket.send(json.dumps(tools_response))
-            print("📤 Lista de herramientas enviada")
-            
-            # Bucle principal: recibir y procesar mensajes
             async for message in websocket:
-                data = json.loads(message)
-                print(f"📥 Recibido: {data}")
-                
-                if data.get("method") == "tools/call":
-                    # Aquí iría la lógica para ejecutar las herramientas
-                    pass
-                elif data.get("method") == "ping":
-                    await websocket.send(json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": data.get("id"),
-                        "result": {}
-                    }))
+                # Aquí va la lógica para manejar los mensajes
+                print(f"📥 {message}")
+                # Si es un ping, respondemos con pong
+                if '"method":"ping"' in message:
+                    await websocket.send('{"jsonrpc":"2.0","id":1,"result":{}}')
                     print("📤 Pong")
-                
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error en WebSocket: {e}")
 
+# ============================================
+# Punto de entrada
+# ============================================
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Iniciar servidor HTTP en un hilo separado
+    import threading
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    
+    # Conectar a Xiaozhi
+    asyncio.run(connect_to_xiaozhi())
