@@ -4,10 +4,20 @@ import asyncio
 import threading
 import websockets
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from server import mcp
+
+print("🔍 Cargando server.py...")
+try:
+    from server import mcp
+    print("✅ server.py cargado correctamente")
+except Exception as e:
+    print(f"❌ Error al cargar server.py: {e}")
+    mcp = None
 
 MCP_ENDPOINT = os.getenv("MCP_ENDPOINT")
 PORT = int(os.environ.get("PORT", 8000))
+
+print(f"🔍 MCP_ENDPOINT = {MCP_ENDPOINT}")
+print(f"🔍 PORT = {PORT}")
 
 # ============================================
 # Servidor HTTP para health check (Render)
@@ -32,6 +42,8 @@ def run_health_server():
 # Cliente MCP para Xiaozhi (con reconexión)
 # ============================================
 async def connect_to_xiaozhi():
+    print("🔍 Entrando a connect_to_xiaozhi()")
+    
     if not MCP_ENDPOINT:
         print("❌ Error: MCP_ENDPOINT no configurado")
         return
@@ -52,18 +64,14 @@ async def connect_to_xiaozhi():
                         data = json.loads(message)
                         print(f"📥 Recibido: {data}")
 
-                        # ============================================
-                        # 1. MANEJO DE "initialize"
-                        # ============================================
+                        # Manejar "initialize"
                         if data.get("method") == "initialize":
                             await websocket.send(json.dumps({
                                 "jsonrpc": "2.0",
                                 "id": data.get("id"),
                                 "result": {
                                     "protocolVersion": "2024-11-05",
-                                    "capabilities": {
-                                        "tools": {}
-                                    },
+                                    "capabilities": {"tools": {}},
                                     "serverInfo": {
                                         "name": "xiaozhi-mcp-gateway",
                                         "version": "1.0.0"
@@ -72,9 +80,7 @@ async def connect_to_xiaozhi():
                             }))
                             print("📤 Inicialización respondida")
 
-                        # ============================================
-                        # 2. MANEJO DE "tools/list"
-                        # ============================================
+                        # Manejar "tools/list"
                         elif data.get("method") == "tools/list":
                             await websocket.send(json.dumps({
                                 "jsonrpc": "2.0",
@@ -87,15 +93,8 @@ async def connect_to_xiaozhi():
                                             "inputSchema": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "query": {
-                                                        "type": "string",
-                                                        "description": "La consulta de búsqueda"
-                                                    },
-                                                    "num_results": {
-                                                        "type": "integer",
-                                                        "description": "Número de resultados",
-                                                        "default": 5
-                                                    }
+                                                    "query": {"type": "string", "description": "La consulta de búsqueda"},
+                                                    "num_results": {"type": "integer", "description": "Número de resultados", "default": 5}
                                                 },
                                                 "required": ["query"]
                                             }
@@ -103,19 +102,14 @@ async def connect_to_xiaozhi():
                                         {
                                             "name": "get_current_time",
                                             "description": "Obtiene la hora y fecha actual",
-                                            "inputSchema": {
-                                                "type": "object",
-                                                "properties": {}
-                                            }
+                                            "inputSchema": {"type": "object", "properties": {}}
                                         }
                                     ]
                                 }
                             }))
                             print("📤 Lista de herramientas enviada")
 
-                        # ============================================
-                        # 3. MANEJO DE "tools/call"
-                        # ============================================
+                        # Manejar "tools/call"
                         elif data.get("method") == "tools/call":
                             params = data.get("params", {})
                             tool_name = params.get("name")
@@ -123,7 +117,9 @@ async def connect_to_xiaozhi():
 
                             print(f"🔧 Llamando a: {tool_name} con args: {args}")
 
-                            if tool_name == "web_search":
+                            if mcp is None:
+                                result = "Error: servidor MCP no cargado"
+                            elif tool_name == "web_search":
                                 result = await mcp.tools["web_search"](**args)
                             elif tool_name == "get_current_time":
                                 result = await mcp.tools["get_current_time"](**args)
@@ -134,17 +130,12 @@ async def connect_to_xiaozhi():
                                 "jsonrpc": "2.0",
                                 "id": data.get("id"),
                                 "result": {
-                                    "content": [{
-                                        "type": "text",
-                                        "text": str(result)
-                                    }]
+                                    "content": [{"type": "text", "text": str(result)}]
                                 }
                             }))
                             print("📤 Resultado enviado")
 
-                        # ============================================
-                        # 4. MANEJO DE "ping"
-                        # ============================================
+                        # Manejar "ping"
                         elif data.get("method") == "ping":
                             await websocket.send(json.dumps({
                                 "jsonrpc": "2.0",
@@ -153,9 +144,7 @@ async def connect_to_xiaozhi():
                             }))
                             print("📤 Pong respondido")
 
-                        # ============================================
-                        # 5. MANEJO DE NOTIFICACIONES
-                        # ============================================
+                        # Manejar notificaciones
                         elif data.get("method") == "notifications/initialized":
                             print("✅ Inicialización confirmada por el servidor")
 
@@ -168,17 +157,24 @@ async def connect_to_xiaozhi():
             await asyncio.sleep(5)
 
 # ============================================
-# Punto de entrada (NUEVO ORDEN)
+# Punto de entrada
 # ============================================
 if __name__ == "__main__":
-    # 1️⃣ Primero: Iniciar el WebSocket en un hilo separado
+    print("🚀 Iniciando mcp_gateway.py...")
+    print(f"🔍 MCP_ENDPOINT = {MCP_ENDPOINT}")
+    print(f"🔍 PORT = {PORT}")
+    
+    # Iniciar el WebSocket en un hilo separado
     def run_websocket():
-        asyncio.run(connect_to_xiaozhi())
+        try:
+            asyncio.run(connect_to_xiaozhi())
+        except Exception as e:
+            print(f"❌ Error en hilo WebSocket: {e}")
     
     ws_thread = threading.Thread(target=run_websocket, daemon=True)
     ws_thread.start()
     print("🌐 Cliente WebSocket iniciado")
     
-    # 2️⃣ Luego: Iniciar el servidor HTTP (bloquea el hilo principal)
+    # Iniciar el servidor HTTP (bloquea el hilo principal)
     print("🩺 Iniciando health check...")
     run_health_server()
