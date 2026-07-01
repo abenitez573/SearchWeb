@@ -68,15 +68,6 @@ def web_search(query: str, num_results: int = 5) -> str:
     except Exception as e:
         return f"Error al realizar la búsqueda: {str(e)}"
 
-# ============================================
-# HERRAMIENTA 2: Hora actual
-# ============================================
-@mcp.tool()
-def get_current_time() -> str:
-    """Devuelve la fecha y hora actual en formato legible."""
-    from datetime import datetime
-    now = datetime.now()
-    return now.strftime("%A, %d de %B de %Y, %H:%M:%S")
 
 # ============================================
 # PUNTO DE ENTRADA (OBLIGATORIO)
