@@ -31,6 +31,9 @@ def run_health_server():
 # ============================================
 # Cliente MCP para Xiaozhi
 # ============================================
+
+print(f"🔍 MCP_ENDPOINT = {MCP_ENDPOINT}")
+
 async def connect_to_xiaozhi():
     if not MCP_ENDPOINT:
         print("❌ Error: MCP_ENDPOINT no configurado")
