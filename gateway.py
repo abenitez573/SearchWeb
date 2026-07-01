@@ -2,43 +2,62 @@ import os
 import json
 import asyncio
 import websockets
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from server import mcp
 
 MCP_ENDPOINT = os.getenv("MCP_ENDPOINT")
-PORT = int(os.environ.get("PORT", 10000))
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"OK")
-
-def run_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    print(f"🩺 Servidor de salud en puerto {PORT}")
-    server.serve_forever()
-
-async def connect_to_xiaozhi():
+async def main():
     if not MCP_ENDPOINT:
         print("❌ MCP_ENDPOINT no configurado")
         return
 
     try:
-        async with websockets.connect(MCP_ENDPOINT, ping_interval=20, ping_timeout=60) as websocket:
+        async with websockets.connect(MCP_ENDPOINT) as websocket:
             print("✅ Conectado a Xiaozhi")
+            
+            # 1. Enviar "initialize" (JSON-RPC 2.0)
+            init_msg = {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "clientInfo": {"name": "gateway", "version": "1.0"}
+                }
+            }
+            await websocket.send(json.dumps(init_msg))
+            print("📤 Inicialización enviada")
+            
+            # 2. Esperar respuesta de "initialize"
+            response = await websocket.recv()
+            print(f"📥 Respuesta: {response}")
+            
+            # 3. Enviar notificación de inicialización completada
+            init_done = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }
+            await websocket.send(json.dumps(init_done))
+            print("📤 Inicialización completada")
+            
+            # 4. Enviar "tools/list" para anunciar las herramientas
+            tools_msg = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }
+            await websocket.send(json.dumps(tools_msg))
+            print("📤 Lista de herramientas solicitada")
+            
+            # 5. Bucle principal: recibir y procesar mensajes
             async for message in websocket:
-                # ... (el resto del código de manejo de mensajes)
-                pass
+                data = json.loads(message)
+                print(f"📥 Recibido: {data}")
+                # Aquí iría el manejo de "tools/call" para ejecutar las herramientas
+                
     except Exception as e:
         print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
-    # Iniciar el servidor HTTP en un hilo separado
-    import threading
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
-    
-    # Conectar a Xiaozhi
-    asyncio.run(connect_to_xiaozhi())
+    asyncio.run(main())
